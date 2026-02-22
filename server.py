@@ -12,7 +12,7 @@ if not AUTH_TOKEN:
     print("ERROR: MCP_AUTH_TOKEN required", file=sys.stderr)
     sys.exit(1)
 
-mcp = FastMCP("x-search-mcp", description="Search X/Twitter via Bird CLI or xAI API")
+mcp = FastMCP("x-search-mcp")
 
 @mcp.tool()
 def search_x(topic: str, from_date: str = "", to_date: str = "", depth: str = "default") -> str:
