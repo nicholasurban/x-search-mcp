@@ -65,30 +65,57 @@ def check_auth() -> str:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "3000"))
+    from starlette.requests import Request
     from starlette.responses import JSONResponse
+
+    # OAuth setup
+    oauth_client_id = os.environ.get("MCP_OAUTH_CLIENT_ID")
+    oauth_client_secret = os.environ.get("MCP_OAUTH_CLIENT_SECRET")
+    public_url = os.environ.get("PUBLIC_URL")
+
+    if not oauth_client_id or not oauth_client_secret or not public_url:
+        print("ERROR: MCP_OAUTH_CLIENT_ID, MCP_OAUTH_CLIENT_SECRET, and PUBLIC_URL are required", file=sys.stderr)
+        sys.exit(1)
+
+    from oauth import setup_oauth
+    oauth_routes, validate_token = setup_oauth({
+        "client_id": oauth_client_id,
+        "client_secret": oauth_client_secret,
+        "public_url": public_url,
+        "static_token": AUTH_TOKEN,
+    })
 
     inner_app = mcp.http_app()
 
     async def authed_app(scope, receive, send):
-        """ASGI wrapper: /health is open, everything else requires bearer token."""
+        """ASGI wrapper: health + OAuth endpoints are open, everything else requires token."""
         if scope["type"] == "lifespan":
             await inner_app(scope, receive, send)
             return
         if scope["type"] == "http":
             path = scope.get("path", "")
+            method = scope.get("method", "GET")
+
             # Health endpoint — no auth required
-            if path == "/health" and scope.get("method") == "GET":
+            if path == "/health" and method == "GET":
                 resp = JSONResponse({"status": "ok"})
                 await resp(scope, receive, send)
                 return
-            # All other paths — require bearer token
-            headers = dict(scope.get("headers", []))
-            auth = headers.get(b"authorization", b"").decode()
-            token = auth.replace("Bearer ", "", 1) if auth.startswith("Bearer ") else ""
-            if not hmac.compare_digest(token, AUTH_TOKEN):
+
+            # OAuth endpoints — no auth required
+            route_key = (path, method)
+            if route_key in oauth_routes:
+                request = Request(scope, receive, send)
+                response = await oauth_routes[route_key](request)
+                await response(scope, receive, send)
+                return
+
+            # All other paths — require bearer token (static OR OAuth-issued)
+            if not validate_token(scope):
                 resp = JSONResponse({"error": "Unauthorized"}, status_code=401)
                 await resp(scope, receive, send)
                 return
+
         await inner_app(scope, receive, send)
 
     import uvicorn

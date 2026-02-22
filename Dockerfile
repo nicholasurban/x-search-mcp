@@ -7,7 +7,7 @@ RUN apt-get update && \
 WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
-COPY server.py ./
+COPY server.py oauth.py ./
 COPY lib/ ./lib/
 ENV PORT=3000
 EXPOSE 3000
