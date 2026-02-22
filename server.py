@@ -1,7 +1,9 @@
 """X Search MCP Server -- Bird CLI + xAI API as MCP tools."""
-import os, sys, json
+import os, sys, json, hmac
 from datetime import datetime, timedelta
 from fastmcp import FastMCP
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
 
 # Add project root to path so 'lib' is importable as a package
 # (lib modules use relative imports like `from . import http`)
@@ -13,6 +15,17 @@ if not AUTH_TOKEN:
     sys.exit(1)
 
 mcp = FastMCP("x-search-mcp")
+
+
+class BearerAuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if request.url.path == "/health":
+            return await call_next(request)
+        auth = request.headers.get("authorization", "")
+        token = auth.replace("Bearer ", "", 1) if auth.startswith("Bearer ") else ""
+        if not hmac.compare_digest(token, AUTH_TOKEN):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return await call_next(request)
 
 @mcp.tool()
 def search_x(topic: str, from_date: str = "", to_date: str = "", depth: str = "default") -> str:
@@ -65,4 +78,8 @@ def check_auth() -> str:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "3000"))
-    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
+    from starlette.middleware import Middleware
+    app = mcp.http_app(middleware=[Middleware(BearerAuthMiddleware)])
+
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=port)

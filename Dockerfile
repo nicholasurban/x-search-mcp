@@ -11,5 +11,5 @@ COPY server.py ./
 COPY lib/ ./lib/
 ENV PORT=3000
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:3000/mcp')" 2>/dev/null; exit 0
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD curl -f http://localhost:3000/health || exit 1
 CMD ["python", "server.py"]
