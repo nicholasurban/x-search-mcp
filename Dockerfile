@@ -11,5 +11,5 @@ COPY server.py ./
 COPY lib/ ./lib/
 ENV PORT=3000
 EXPOSE 3000
-HEALTHCHECK --interval=30s --timeout=5s CMD curl -f http://localhost:3000/health || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s CMD curl -sf -o /dev/null -w '' -X POST -H "Content-Type: application/json" -H "Accept: application/json, text/event-stream" http://localhost:3000/mcp -d '{"jsonrpc":"2.0","id":1,"method":"ping"}' || exit 1
 CMD ["python", "server.py"]
