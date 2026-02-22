@@ -2,8 +2,6 @@
 import os, sys, json, hmac
 from datetime import datetime, timedelta
 from fastmcp import FastMCP
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
 
 # Add project root to path so 'lib' is importable as a package
 # (lib modules use relative imports like `from . import http`)
@@ -15,17 +13,6 @@ if not AUTH_TOKEN:
     sys.exit(1)
 
 mcp = FastMCP("x-search-mcp")
-
-
-class BearerAuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        if request.url.path == "/health":
-            return await call_next(request)
-        auth = request.headers.get("authorization", "")
-        token = auth.replace("Bearer ", "", 1) if auth.startswith("Bearer ") else ""
-        if not hmac.compare_digest(token, AUTH_TOKEN):
-            return JSONResponse({"error": "Unauthorized"}, status_code=401)
-        return await call_next(request)
 
 @mcp.tool()
 def search_x(topic: str, from_date: str = "", to_date: str = "", depth: str = "default") -> str:
@@ -78,8 +65,31 @@ def check_auth() -> str:
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "3000"))
-    from starlette.middleware import Middleware
-    app = mcp.http_app(middleware=[Middleware(BearerAuthMiddleware)])
+    from starlette.responses import JSONResponse
+
+    inner_app = mcp.http_app()
+
+    async def authed_app(scope, receive, send):
+        """ASGI wrapper: /health is open, everything else requires bearer token."""
+        if scope["type"] == "lifespan":
+            await inner_app(scope, receive, send)
+            return
+        if scope["type"] == "http":
+            path = scope.get("path", "")
+            # Health endpoint — no auth required
+            if path == "/health" and scope.get("method") == "GET":
+                resp = JSONResponse({"status": "ok"})
+                await resp(scope, receive, send)
+                return
+            # All other paths — require bearer token
+            headers = dict(scope.get("headers", []))
+            auth = headers.get(b"authorization", b"").decode()
+            token = auth.replace("Bearer ", "", 1) if auth.startswith("Bearer ") else ""
+            if not hmac.compare_digest(token, AUTH_TOKEN):
+                resp = JSONResponse({"error": "Unauthorized"}, status_code=401)
+                await resp(scope, receive, send)
+                return
+        await inner_app(scope, receive, send)
 
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(authed_app, host="0.0.0.0", port=port)
