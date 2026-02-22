@@ -35,7 +35,7 @@ def search_x(topic: str, from_date: str = "", to_date: str = "", depth: str = "d
         status = get_bird_status()
         if status.get("authenticated"):
             result = bird_search(topic, from_date, to_date, depth)
-            if result.get("posts"):
+            if result.get("items") or result.get("tweets"):
                 return json.dumps(result, indent=2, default=str)
     except Exception as e:
         print(f"Bird CLI failed: {e}", file=sys.stderr)
