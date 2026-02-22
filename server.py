@@ -36,11 +36,19 @@ def search_x(topic: str, from_date: str = "", to_date: str = "", depth: str = "d
         status = get_bird_status()
         if status.get("authenticated"):
             result = bird_search(topic, from_date, to_date, depth)
-            if result.get("error"):
-                bird_error = result["error"]
-                print(f"Bird search error: {bird_error}", file=sys.stderr)
-            if result.get("items") or result.get("tweets"):
-                return json.dumps(result, indent=2, default=str)
+            # Bird can return a raw list of tweets or a dict with items/tweets/error
+            if isinstance(result, list):
+                if result:
+                    return json.dumps(result, indent=2, default=str)
+                bird_error = "Bird returned empty results"
+            else:
+                if result.get("error"):
+                    bird_error = result["error"]
+                    print(f"Bird search error: {bird_error}", file=sys.stderr)
+                if result.get("items") or result.get("tweets"):
+                    return json.dumps(result, indent=2, default=str)
+                if not bird_error:
+                    bird_error = "No results found"
         else:
             bird_error = "Not authenticated"
     except Exception as e:
