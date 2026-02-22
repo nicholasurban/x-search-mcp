@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+lib/vendor/bird-search/node_modules/
