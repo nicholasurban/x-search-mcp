@@ -29,18 +29,26 @@ def search_x(topic: str, from_date: str = "", to_date: str = "", depth: str = "d
     if not to_date:
         to_date = datetime.now().strftime("%Y-%m-%d")
 
+    bird_error = None
     # Try Bird CLI first
     try:
         from lib.bird_x import search_x as bird_search, get_bird_status
         status = get_bird_status()
         if status.get("authenticated"):
             result = bird_search(topic, from_date, to_date, depth)
+            if result.get("error"):
+                bird_error = result["error"]
+                print(f"Bird search error: {bird_error}", file=sys.stderr)
             if result.get("items") or result.get("tweets"):
                 return json.dumps(result, indent=2, default=str)
+        else:
+            bird_error = "Not authenticated"
     except Exception as e:
+        bird_error = str(e)
         print(f"Bird CLI failed: {e}", file=sys.stderr)
 
     # Fallback to xAI API
+    xai_error = None
     try:
         xai_key = os.environ.get("XAI_API_KEY")
         if xai_key:
@@ -49,10 +57,13 @@ def search_x(topic: str, from_date: str = "", to_date: str = "", depth: str = "d
             model = select_xai_model(xai_key)
             result = xai_search(xai_key, model, topic, from_date, to_date, depth)
             return json.dumps(result, indent=2, default=str)
+        else:
+            xai_error = "XAI_API_KEY not configured"
     except Exception as e:
+        xai_error = str(e)
         print(f"xAI API failed: {e}", file=sys.stderr)
 
-    return json.dumps({"error": "Both Bird CLI and xAI API unavailable"})
+    return json.dumps({"error": f"Bird: {bird_error}; xAI: {xai_error}"})
 
 @mcp.tool()
 def check_auth() -> str:
